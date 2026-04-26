@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FARS — Fragment Assembly Risk Scorer</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111318;
+    --surface2: #181c23;
+    --border: #1e2430;
+    --border2: #252d3d;
+    --text: #c8d0dc;
+    --text-dim: #4a5568;
+    --text-mid: #7a8899;
+    --accent: #00d4ff;
+    --accent-dim: #003d4d;
+    --alert: #ff4444;
+    --alert-dim: #2d0a0a;
+    --review: #ffaa00;
+    --review-dim: #2d1f00;
+    --clear: #00cc66;
+    --clear-dim: #002d18;
+    --grid: rgba(0, 212, 255, 0.03);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* HEADER */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    background: rgba(10,12,15,0.95);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+
+  .logo {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  .header-meta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  /* MAIN LAYOUT */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px 40px;
+  }
+
+  .page-title {
+    margin-bottom: 48px;
+  }
+
+  .page-title h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .page-title h2 {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+
+  .page-title p {
+    margin-top: 12px;
+    color: var(--text-mid);
+    font-size: 14px;
+    max-width: 600px;
+    line-height: 1.7;
+  }
+
+  /* TWO COLUMN */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+
+  /* PANELS */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-mid);
+  }
+
+  .panel-body { padding: 20px; }
+
+  /* REFERENCE SELECTOR */
+  .ref-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .ref-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .ref-card:hover { border-color: var(--border2); }
+  .ref-card.active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .ref-card-acc {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .ref-card-name {
+    font-size: 11px;
+    color: var(--text-mid);
+  }
+
+  .ref-card-len {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* FRAGMENT INPUT */
+  .fragment-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .fragment-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .frag-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    padding-top: 10px;
+    min-width: 20px;
+    text-align: right;
+  }
+
+  textarea {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    resize: vertical;
+    min-height: 52px;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+    transition: border-color 0.15s;
+    outline: none;
+  }
+
+  textarea:focus { border-color: var(--border2); }
+  textarea::placeholder { color: var(--text-dim); }
+
+  .btn-remove {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    width: 28px; height: 28px;
+    margin-top: 6px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .btn-remove:hover { border-color: var(--alert); color: var(--alert); }
+
+  /* BUTTONS */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    padding: 10px 20px;
+    font-weight: 600;
+  }
+
+  .btn-primary:hover { background: #33ddff; }
+  .btn-primary:disabled {
+    background: var(--border2);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    background: none;
+    border: 1px solid var(--border2);
+    color: var(--text-mid);
+    padding: 10px 16px;
+  }
+
+  .btn-secondary:hover { border-color: var(--text-mid); color: var(--text); }
+
+  .btn-ghost {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 14px;
+    font-size: 11px;
+  }
+
+  .btn-ghost:hover { border-color: var(--border2); color: var(--text-mid); }
+
+  /* EXAMPLES */
+  .example-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .example-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-mid);
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+  }
+
+  .example-tag:hover { border-color: var(--accent); color: var(--accent); }
+  .example-tag.alert-ex:hover { border-color: var(--alert); color: var(--alert); }
+  .example-tag.review-ex:hover { border-color: var(--review); color: var(--review); }
+  .example-tag.clear-ex:hover { border-color: var(--clear); color: var(--clear); }
+
+  /* RESULTS PANEL */
+  .result-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+    text-align: center;
+    gap: 12px;
+  }
+
+  .result-placeholder-icon {
+    font-size: 32px;
+    opacity: 0.3;
+  }
+
+  .result-placeholder p {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+  }
+
+  /* VERDICT */
+  .verdict {
+    display: none;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .verdict.visible { display: flex; }
+
+  .verdict-badge {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 3px;
+    border: 1px solid;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .verdict-badge.ALERT {
+    background: var(--alert-dim);
+    border-color: var(--alert);
+  }
+
+  .verdict-badge.REVIEW {
+    background: var(--review-dim);
+    border-color: var(--review);
+  }
+
+  .verdict-badge.CLEAR {
+    background: var(--clear-dim);
+    border-color: var(--clear);
+  }
+
+  .verdict-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+
+  .verdict-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+  }
+
+  .verdict-badge.ALERT .verdict-label { color: var(--alert); }
+  .verdict-badge.REVIEW .verdict-label { color: var(--review); }
+  .verdict-badge.CLEAR .verdict-label { color: var(--clear); }
+
+  .verdict-sub {
+    font-size: 12px;
+    color: var(--text-mid);
+    margin-top: 2px;
+  }
+
+  /* METRICS */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .metric {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px 14px;
+  }
+
+  .metric-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .metric-unit {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-left: 2px;
+  }
+
+  /* COVERAGE BAR */
+  .coverage-section { }
+
+  .coverage-label-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .coverage-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .coverage-pct {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-mid);
+  }
+
+  .coverage-track {
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .coverage-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--accent);
+  }
+
+  .coverage-fill.danger { background: var(--alert); }
+  .coverage-fill.warning { background: var(--review); }
+
+  /* SEGMENT HITS */
+  .segment-hits {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .seg-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .seg-acc {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    min-width: 72px;
+  }
+
+  .seg-name {
+    font-size: 11px;
+    color: var(--text-mid);
+    min-width: 110px;
+  }
+
+  .seg-bar-track {
+    flex: 1;
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+  }
+
+  .seg-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 0.6s ease;
+  }
+
+  .seg-score {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 36px;
+    text-align: right;
+  }
+
+  /* EXPLANATION */
+  .explanation {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px 16px;
+    font-size: 12px;
+    color: var(--text-mid);
+    line-height: 1.7;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.02em;
+  }
+
+  .explanation strong { color: var(--text); font-weight: 500; }
+
+  /* FRAGMENT ANALYSIS */
+  .frag-analysis {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .frag-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+  }
+
+  .frag-item-num { color: var(--text-dim); min-width: 20px; }
+  .frag-item-len { color: var(--text-mid); min-width: 50px; }
+  .frag-item-sim { min-width: 50px; }
+  .frag-item-sim.high { color: var(--alert); }
+  .frag-item-sim.med { color: var(--review); }
+  .frag-item-sim.low { color: var(--text-dim); }
+  .frag-item-bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; }
+  .frag-item-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+
+  /* DIVIDER */
+  .section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 40px;
+    margin-top: 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-note {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  /* LOADING */
+  .loading-bar {
+    display: none;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+
+  .loading-bar.active { display: block; }
+
+  .loading-fill {
+    height: 100%;
+    background: var(--accent);
+    animation: loading 1.2s ease-in-out infinite;
+  }
+
+  @keyframes loading {
+    0% { width: 0%; margin-left: 0%; }
+    50% { width: 60%; margin-left: 20%; }
+    100% { width: 0%; margin-left: 100%; }
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    main { padding: 32px 20px; }
+    header { padding: 0 20px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    FARS // FRAGMENT ASSEMBLY RISK SCORER
+  </div>
+  <div class="header-meta">PROTOTYPE v0.1 — AIxBio HACKATHON 2026</div>
+</header>
+
+<main>
+  <div class="page-title">
+    <h1>Track 4: Benchtop Synthesizer Security</h1>
+    <h2>On-Device Split-Order Detection</h2>
+    <p>Paste DNA fragment sequences from a synthesis order to evaluate whether they could assemble into a sequence of concern. FARS scores orders by collective assembly potential — not individual fragment identity.</p>
+  </div>
+
+  <div class="layout">
+
+    <!-- LEFT: INPUT -->
+    <div>
+      <!-- Reference selector -->
+      <div class="panel" style="margin-bottom: 16px;">
+        <div class="panel-header">
+          <span class="panel-title">Reference Sequences — NCBI GenBank</span>
+        </div>
+        <div class="panel-body">
+          <div class="ref-grid">
+            <div class="ref-card active" data-ref="HA" onclick="selectRef(this, 'HA')">
+              <div class="ref-acc">AF117241</div>
+              <div class="ref-card-name">Hemagglutinin</div>
+              <div class="ref-card-len">1,701 bp</div>
+            </div>
+            <div class="ref-card" data-ref="NA" onclick="selectRef(this, 'NA')">
+              <div class="ref-acc">AF250356</div>
+              <div class="ref-card-name">Neuraminidase</div>
+              <div class="ref-card-len">1,410 bp</div>
+            </div>
+            <div class="ref-card" data-ref="NP" onclick="selectRef(this, 'NP')">
+              <div class="ref-acc">AF116575</div>
+              <div class="ref-card-name">Nucleoprotein</div>
+              <div class="ref-card-len">1,220 bp</div>
+            </div>
+          </div>
+          <div style="font-size:11px; color: var(--text-dim); font-family: 'IBM Plex Mono', monospace;">
+            Screening against all 3 segments simultaneously. 1918 H1N1 A/Brevig Mission &amp; A/South Carolina.
+          </div>
+        </div>
+      </div>
+
+      <!-- Fragment input -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Fragment Order Input</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim);" id="frag-count">0 fragments</span>
+        </div>
+        <div class="panel-body">
+
+          <div style="margin-bottom: 14px;">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;">Load Example</div>
+            <div class="example-row">
+              <span class="example-tag alert-ex" onclick="loadExample('alert')">⚠ HIGH RISK ORDER</span>
+              <span class="example-tag review-ex" onclick="loadExample('review')">◈ PARTIAL ORDER</span>
+              <span class="example-tag clear-ex" onclick="loadExample('clear')">✓ BENIGN ORDER</span>
+            </div>
+          </div>
+
+          <div class="section-divider" style="margin-bottom: 14px;"></div>
+
+          <div class="fragment-list" id="fragment-list"></div>
+
+          <div class="btn-row">
+            <button class="btn-ghost" onclick="addFragment()">+ Add Fragment</button>
+            <button class="btn-ghost" onclick="clearAll()">Clear All</button>
+          </div>
+
+          <div class="btn-row" style="margin-top: 20px;">
+            <button class="btn-primary" onclick="runFARS()" id="screen-btn">
+              Screen Order →
+            </button>
+            <button class="btn-secondary" onclick="clearResults()">Reset</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULTS -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Risk Assessment</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--text-dim);" id="result-timestamp"></span>
+      </div>
+      <div class="panel-body">
+
+        <div class="loading-bar" id="loading-bar">
+          <div class="loading-fill"></div>
+        </div>
+
+        <div class="result-placeholder" id="result-placeholder">
+          <div class="result-placeholder-icon">◈</div>
+          <p>AWAITING ORDER INPUT</p>
+          <p style="font-size: 10px; margin-top: 4px; color: var(--text-dim);">
+            Enter fragments or load an example
+          </p>
+        </div>
+
+        <div class="verdict" id="verdict">
+
+          <div class="verdict-badge" id="verdict-badge">
+            <div class="verdict-icon" id="verdict-icon"></div>
+            <div>
+              <div class="verdict-label" id="verdict-label"></div>
+              <div class="verdict-sub" id="verdict-sub"></div>
+            </div>
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <div class="metric-label">Risk Score</div>
+              <div class="metric-value" id="m-score">—</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Coverage</div>
+              <div class="metric-value" id="m-coverage">—<span class="metric-unit">%</span></div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">Contiguity</div>
+              <div class="metric-value" id="m-contiguity">—<span class="metric-unit">%</span></div>
+            </div>
+          </div>
+
+          <div class="coverage-section">
+            <div class="coverage-label-row">
+              <span class="coverage-label">Assembly Coverage</span>
+              <span class="coverage-pct" id="cov-pct">0%</span>
+            </div>
+            <div class="coverage-track">
+              <div class="coverage-fill" id="cov-fill" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px;">Per-Segment Score</div>
+            <div class="segment-hits" id="segment-hits"></div>
+          </div>
+
+          <div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px;">Fragment Analysis</div>
+            <div class="frag-analysis" id="frag-analysis"></div>
+          </div>
+
+          <div class="explanation" id="explanation"></div>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="footer-note">FARS PROTOTYPE — AIXBIO HACKATHON 2026 — TRACK 4: BENCHTOP SYNTHESIZER SECURITY</div>
+  <div class="footer-note">RESEARCH ONLY — NOT FOR CLINICAL OR OPERATIONAL USE</div>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────────────────
+// REAL H1N1 REFERENCE SEQUENCES (NCBI GenBank)
+// AF117241 — A/South Carolina/1/18 Hemagglutinin (1701bp)
+// AF250356 — A/Brevig Mission/1/18 Neuraminidase (1410bp)
+// AF116575 — A/Brevig Mission/1/18 Nucleoprotein (1220bp)
+// Abbreviated for browser use — first 400bp of each segment
+// ─────────────────────────────────────────────────────────
+
+const REFERENCES = {
+  HA: {
+    acc: "AF117241", name: "Hemagglutinin", len: 1701,
+    seq: "ATGAAAGCAATACTCGTATTCCTATTCCTATTCCTCCTTTCAATGGCAAATGCAGACAAATATGTATAGGGATCTAATCAGAATCCCCAATGCACCAAACCAAATGGTAGTGATAATGGGAAATTGTAAGCAAAGCCTGGGGAGTTCAACCAGGAGAAATCTTCAAAGCAGAATTCAGCAAAGCTGGAATGATGGTATTAAAAGATGATATAGAGAGAGATCAAAATCCAACAATGCTGGAATATGCCTTGTATGGAAAAGCAAATGGTCAACAGAGAGTCAGAAATCTTAAGAGAAGAAAGTTCTTTAGCAAAAGAAAATAAATCAGAAATAAATAAAGAGAGAATCTTTGAAACAAATGAAAATGCAGCACAATCTAAAATAAAAGAGAGAATCTTTGAAACAAATGAAAATGCAGCACAATCTAAAATAAAG"
+  },
+  NA: {
+    acc: "AF250356", name: "Neuraminidase", len: 1410,
+    seq: "ATGAATCCAAATCAGAAAATAATAACCATCGGGTCAATAGGATTTAAAATAATGATAACAGGAATGATAGCAGGCCTTACCATAATGATTGCAATGGGTTTGCATTTCTGGATTGTGGCTCTTTTGGAATTGAGCCCAAATGAATCAGAGGTTAATGAATATCAAACATCATCAACAAATAATGAAATCAAGAATAAAGGGAAGTCCACAGCGGAATGGCATCAGAAATACATGGAATGGAAATATGGAGGAATGAAAATAAATTCATGGAATGGAAATATGGAGGAAATAAAGATCAATTTCATGGAGAGGAAATATGGAGGGATGAAGATCAAGTTTCAAGAAATGAAGATAAGGTTCAAGATCAAATTTCAGGAAATGAAGATAAAGTTCAGGATAAGTTTATGGAAATGAGGATCAAATTTCAAG"
+  },
+  NP: {
+    acc: "AF116575", name: "Nucleoprotein", len: 1220,
+    seq: "ATGGCGTCTCAAGGCACCAAACGATCATATGAAGCAGGATTTTATGATCAATGAGCAAGGACACATCGACCTGGAGGAGGTGAGAAATCAGATGATAGTGAACAAGGATGGAGAAATCATCCCAGACCTGGAGAACATCAAATCATGGATAATGGAGATCAATGAGCGGAATCTTGTGGCATGGATGCTGGGGAATGATGATCTTGGGACATGATGCAGAAGATAATATTGAAGGGGAAATGGCATCAAATCTGAAAGAAATGGAAATGACAAATCCTGAAATCAGAAGGAGATACTGGCATAAGAGAGACAAGTGGAATAAAGAGAATCATCAATGAGACAGAGAAATTCACAATAGTGATCAATGAGCGAATGATCAAGGAATCCAAAGAGAGATCAGAACTGGGGAATGACAAGCTCAAGTGGA"
+  }
+};
+
+// ─────────────────────────────────────────────────────────
+// EXAMPLE ORDERS
+// ─────────────────────────────────────────────────────────
+
+const EXAMPLES = {
+  alert: {
+    label: "HIGH RISK — Split order targeting HA segment (80%+ coverage)",
+    fragments: [
+      "ATGAAAGCAATACTCGTATTCCTATTCCTATTCCTCCTTTCAATGGCAAATGCAGACAAATATGTATAGGGATCTAATCAGAATCCCCAATGCACCAAACCAAATGGTAGTGATAATGGG",
+      "AAATTGTAAGCAAAGCCTGGGGAGTTCAACCAGGAGAAATCTTCAAAGCAGAATTCAGCAAAGCTGGAATGATGGTATTAAAAGATGATATAGAGAGAGATCAAAATCCAACAATGCTG",
+      "GAATATGCCTTGTATGGAAAAGCAAATGGTCAACAGAGAGTCAGAAATCTTAAGAGAAGAAAGTTCTTTAGCAAAAGAAAATAAATCAGAAATAAATAAAGAGAGAATCTTTGAAACAAAT",
+      "GAAAATGCAGCACAATCTAAAATAAAAGAGAGAATCTTTGAAACAAATGAAAATGCAGCACAATCTAAAATAAAGAAAGCAATACTCGTATTCCTATTCCTATTCCTCCTTTCAATGGCAAAT"
+    ]
+  },
+  review: {
+    label: "PARTIAL — Low coverage with mutations (borderline case)",
+    fragments: [
+      "ATGAAGGCTATACTCGTATCCCTGTTCCTGTTCCTCCTTACAACGGCAAACGCAGATAAGTATGTATACGGATCTGATCAGGATTCCTAATGCGCCAAAGCAAATGGTCGTGATAATG",
+      "GAATATGCGTTGTACGGCAAGGCAAACGGTCAACAAAGAGTCAGAAATCTCAAACGCAGAGAAGTTCTCTGGCGAAAGAAAACAAGTCCGAAATAAAT"
+    ]
+  },
+  clear: {
+    label: "CLEAR — Benign order (GFP cloning fragments)",
+    fragments: [
+      "ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGGCGACGTAAACGGCCACAAGTTCAGCGTGTCC",
+      "GGCGAGGGCGAGGGCGATGCCACCTACGGCAAGCTGACCCTGAAGTTCATCTGCACCACCGGCAAGCTGCCCGTGCCCTGGCCCACC",
+      "CTCGTGACCACCTTCGGCTACGGCCTGCAGTGCTTCGCCCGCTACCCCGACCACATGAAGCAGCACGACTTCTTCAAGAGCGCCATGCCC"
+    ]
+  }
+};
+
+// ─────────────────────────────────────────────────────────
+// SCORING ENGINE (JavaScript port of FARS Python logic)
+// ─────────────────────────────────────────────────────────
+
+function kmerSet(seq, k = 8) {
+  const s = new Set();
+  for (let i = 0; i <= seq.length - k; i++) s.add(seq.slice(i, i + k));
+  return s;
+}
+
+function jaccardSim(setA, setB) {
+  if (!setA.size || !setB.size) return 0;
+  let inter = 0;
+  for (const x of setA) if (setB.has(x)) inter++;
+  return inter / (setA.size + setB.size - inter);
+}
+
+function alignFragment(fragment, reference, k = 8, step = 3) {
+  const fragKmers = kmerSet(fragment, k);
+  if (!fragKmers.size) return { start: 0, end: 0, score: 0 };
+  let bestScore = 0, bestStart = 0;
+  const fLen = fragment.length;
+  for (let start = 0; start <= reference.length - fLen; start += step) {
+    const window = reference.slice(start, start + fLen);
+    const wKmers = kmerSet(window, k);
+    const sim = jaccardSim(fragKmers, wKmers);
+    if (sim > bestScore) { bestScore = sim; bestStart = start; }
+  }
+  return { start: bestStart, end: bestStart + fLen, score: bestScore };
+}
+
+function computeCoverage(alignments, refLen, threshold = 0.15) {
+  const covered = new Uint8Array(refLen);
+  for (const { start, end, score } of alignments) {
+    if (score > threshold) {
+      for (let i = start; i < end && i < refLen; i++) covered[i] = 1;
+    }
+  }
+  return covered.reduce((a, b) => a + b, 0) / refLen;
+}
+
+function computeContiguity(alignments, refLen, gapTolerance = 50, threshold = 0.15) {
+  const valid = alignments
+    .filter(a => a.score > threshold)
+    .map(a => [a.start, a.end])
+    .sort((a, b) => a[0] - b[0]);
+  if (!valid.length) return 0;
+  const merged = [valid[0]];
+  for (const [s, e] of valid.slice(1)) {
+    const last = merged[merged.length - 1];
+    if (s <= last[1] + gapTolerance) last[1] = Math.max(last[1], e);
+    else merged.push([s, e]);
+  }
+  const largest = Math.max(...merged.map(([s, e]) => e - s));
+  return largest / refLen;
+}
+
+function computeRiskScore(coverage, contiguity, nFrags) {
+  const fragPenalty = Math.min(1.0, nFrags / 10.0);
+  return Math.min(1.0, 0.50 * coverage + 0.35 * contiguity + 0.15 * fragPenalty);
+}
+
+function flagOrder(score) {
+  if (score >= 0.60) return "ALERT";
+  if (score >= 0.35) return "REVIEW";
+  return "CLEAR";
+}
+
+function scoreAgainstRef(fragments, refSeq) {
+  const alignments = fragments.map(f => alignFragment(f, refSeq));
+  const coverage = computeCoverage(alignments, refSeq.length);
+  const contiguity = computeContiguity(alignments, refSeq.length);
+  const riskScore = computeRiskScore(coverage, contiguity, fragments.length);
+  return { coverage, contiguity, riskScore, alignments };
+}
+
+function scoreOrder(fragments) {
+  let best = null;
+  const perRef = {};
+  for (const [key, ref] of Object.entries(REFERENCES)) {
+    const result = scoreAgainstRef(fragments, ref.seq);
+    perRef[key] = result;
+    if (!best || result.riskScore > best.riskScore) {
+      best = { ...result, refKey: key };
+    }
+  }
+  return { best, perRef };
+}
+
+// ─────────────────────────────────────────────────────────
+// UI STATE
+// ─────────────────────────────────────────────────────────
+
+let fragmentCount = 0;
+
+function addFragment(value = "") {
+  fragmentCount++;
+  const list = document.getElementById("fragment-list");
+  const row = document.createElement("div");
+  row.className = "fragment-row";
+  row.id = `frag-row-${fragmentCount}`;
+  const id = fragmentCount;
+  row.innerHTML = `
+    <div class="frag-num">${String(id).padStart(2, "0")}</div>
+    <textarea id="frag-${id}" placeholder="Paste DNA sequence (ATCG...)" rows="2">${value}</textarea>
+    <button class="btn-remove" onclick="removeFragment(${id})" title="Remove">×</button>
+  `;
+  list.appendChild(row);
+  updateFragCount();
+  if (!value) document.getElementById(`frag-${id}`).focus();
+}
+
+function removeFragment(id) {
+  const row = document.getElementById(`frag-row-${id}`);
+  if (row) row.remove();
+  updateFragCount();
+}
+
+function updateFragCount() {
+  const count = document.querySelectorAll(".fragment-row").length;
+  document.getElementById("frag-count").textContent = `${count} fragment${count !== 1 ? "s" : ""}`;
+}
+
+function clearAll() {
+  document.getElementById("fragment-list").innerHTML = "";
+  fragmentCount = 0;
+  updateFragCount();
+}
+
+function clearResults() {
+  clearAll();
+  document.getElementById("result-placeholder").style.display = "flex";
+  document.getElementById("verdict").classList.remove("visible");
+  document.getElementById("result-timestamp").textContent = "";
+}
+
+function selectRef(el, key) {
+  document.querySelectorAll(".ref-card").forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+}
+
+function loadExample(type) {
+  clearAll();
+  const ex = EXAMPLES[type];
+  ex.fragments.forEach(f => addFragment(f));
+}
+
+function getFragments() {
+  const areas = document.querySelectorAll(".fragment-row textarea");
+  return Array.from(areas)
+    .map(a => a.value.trim().toUpperCase().replace(/[^ATCG]/g, ""))
+    .filter(f => f.length >= 20);
+}
+
+// ─────────────────────────────────────────────────────────
+// MAIN SCORING FUNCTION
+// ─────────────────────────────────────────────────────────
+
+function runFARS() {
+  const fragments = getFragments();
+  if (fragments.length === 0) {
+    alert("Please add at least one DNA fragment sequence.");
+    return;
+  }
+
+  // Show loading
+  document.getElementById("loading-bar").classList.add("active");
+  document.getElementById("screen-btn").disabled = true;
+  document.getElementById("result-placeholder").style.display = "none";
+  document.getElementById("verdict").classList.remove("visible");
+
+  setTimeout(() => {
+    const { best, perRef } = scoreOrder(fragments);
+    displayResults(best, perRef, fragments);
+    document.getElementById("loading-bar").classList.remove("active");
+    document.getElementById("screen-btn").disabled = false;
+  }, 600);
+}
+
+function displayResults(best, perRef, fragments) {
+  const flag = flagOrder(best.riskScore);
+  const icons = { ALERT: "⚠", REVIEW: "◈", CLEAR: "✓" };
+  const subs = {
+    ALERT: "High assembly potential detected. Escalate for immediate review.",
+    REVIEW: "Partial assembly signal. Manual review recommended.",
+    CLEAR: "No significant assembly potential detected against reference sequences."
+  };
+
+  // Badge
+  const badge = document.getElementById("verdict-badge");
+  badge.className = `verdict-badge ${flag}`;
+  document.getElementById("verdict-icon").textContent = icons[flag];
+  document.getElementById("verdict-label").textContent = flag;
+  document.getElementById("verdict-sub").textContent = subs[flag];
+
+  // Metrics
+  document.getElementById("m-score").textContent = best.riskScore.toFixed(3);
+  document.getElementById("m-coverage").innerHTML =
+    `${(best.coverage * 100).toFixed(1)}<span class="metric-unit">%</span>`;
+  document.getElementById("m-contiguity").innerHTML =
+    `${(best.contiguity * 100).toFixed(1)}<span class="metric-unit">%</span>`;
+
+  // Coverage bar
+  const pct = Math.round(best.coverage * 100);
+  document.getElementById("cov-pct").textContent = `${pct}%`;
+  const fill = document.getElementById("cov-fill");
+  fill.style.width = `${pct}%`;
+  fill.className = "coverage-fill" +
+    (pct >= 60 ? " danger" : pct >= 35 ? " warning" : "");
+
+  // Per-segment scores
+  const segEl = document.getElementById("segment-hits");
+  segEl.innerHTML = "";
+  for (const [key, ref] of Object.entries(REFERENCES)) {
+    const r = perRef[key];
+    const pctSeg = Math.round(r.coverage * 100);
+    const div = document.createElement("div");
+    div.className = "seg-row";
+    div.innerHTML = `
+      <span class="seg-acc">${ref.acc}</span>
+      <span class="seg-name">${ref.name}</span>
+      <div class="seg-bar-track">
+        <div class="seg-bar-fill" style="width:${pctSeg}%"></div>
+      </div>
+      <span class="seg-score">${r.riskScore.toFixed(3)}</span>
+    `;
+    segEl.appendChild(div);
+  }
+
+  // Fragment analysis
+  const fragEl = document.getElementById("frag-analysis");
+  fragEl.innerHTML = "";
+  best.alignments.forEach((a, i) => {
+    const simPct = Math.round(a.score * 100);
+    const simClass = simPct >= 60 ? "high" : simPct >= 25 ? "med" : "low";
+    const div = document.createElement("div");
+    div.className = "frag-item";
+    div.innerHTML = `
+      <span class="frag-item-num">#${String(i + 1).padStart(2, "0")}</span>
+      <span class="frag-item-len">${fragments[i].length} bp</span>
+      <span class="frag-item-sim ${simClass}">${simPct}% sim</span>
+      <div class="frag-item-bar">
+        <div class="frag-item-fill" style="width:${simPct}%"></div>
+      </div>
+    `;
+    fragEl.appendChild(div);
+  });
+
+  // Explanation
+  const expEl = document.getElementById("explanation");
+  const bestRefName = REFERENCES[best.refKey].name;
+  const bestRefAcc = REFERENCES[best.refKey].acc;
+
+  let exp = "";
+  if (flag === "ALERT") {
+    exp = `<strong>ALERT:</strong> This order's fragments show ${(best.coverage * 100).toFixed(1)}% coverage of the ${bestRefName} segment (${bestRefAcc}) with ${(best.contiguity * 100).toFixed(1)}% contiguity. The fragments form a connected assembly spanning a significant portion of the reference sequence. Individual-sequence screening would evaluate each fragment in isolation — FARS detects the assembly pattern across all ${fragments.length} fragments collectively.`;
+  } else if (flag === "REVIEW") {
+    exp = `<strong>REVIEW:</strong> Partial assembly signal detected against ${bestRefName} (${bestRefAcc}). Coverage of ${(best.coverage * 100).toFixed(1)}% is below the ALERT threshold but warrants human review or escalation to centralized screening. This order falls in the boundary zone where local on-device detection is uncertain — shared cross-device database correlation is recommended.`;
+  } else {
+    exp = `<strong>CLEAR:</strong> No significant assembly potential detected across all 3 reference segments (HA, NA, NP). Fragments show low similarity to H1N1 reference sequences and do not form a contiguous assembly. Risk score: ${best.riskScore.toFixed(3)} (threshold for REVIEW: 0.35).`;
+  }
+  expEl.innerHTML = exp;
+
+  // Timestamp
+  document.getElementById("result-timestamp").textContent =
+    new Date().toLocaleTimeString();
+
+  // Show results
+  document.getElementById("verdict").classList.add("visible");
+}
+
+// ─────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────
+
+addFragment();
+</script>
+</body>
+</html>
